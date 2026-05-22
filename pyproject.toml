@@ -1,0 +1,16 @@
+[project]
+name = "mcp_project"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.136.1",
+    "flask>=3.1.3",
+    "flask-cors>=6.0.2",
+    "mcp>=1.27.1",
+    "openai>=2.37.0",
+    "psycopg2>=2.9.12",
+    "sqlalchemy>=2.0.49",
+    "uvicorn>=0.47.0",
+]

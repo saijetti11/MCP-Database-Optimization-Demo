@@ -1,0 +1,7 @@
+mcp[cli]
+sqlalchemy
+psycopg2-binary
+openai
+flask
+flask-cors
+python-dotenv

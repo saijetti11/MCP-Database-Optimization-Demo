@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>DB Optimization Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#070b14;--surface:#0d1424;--card:#111c30;--card2:#0f1829;
+  --border:#1a2840;--border2:#243450;
+  --bad:#ff4060;--bad-dim:rgba(255,64,96,.13);
+  --opt:#00dfa2;--opt-dim:rgba(0,223,162,.11);
+  --saved:#f5c400;--saved-dim:rgba(245,196,0,.11);
+  --accent:#4d8fff;--accent-dim:rgba(77,143,255,.12);
+  --text:#dde6f5;--muted:#475d7a;--muted2:#2e3f57;
+  --radius:14px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden}
+
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:
+    linear-gradient(rgba(77,143,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(77,143,255,.03) 1px,transparent 1px);
+  background-size:40px 40px;
+  pointer-events:none;z-index:0;
+}
+
+.page{max-width:1160px;margin:0 auto;padding:0 24px 100px;position:relative;z-index:1}
+
+/* ── HEADER ── */
+.header{padding:48px 0 40px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:20px;border-bottom:1px solid var(--border);margin-bottom:44px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);background:var(--accent-dim);border:1px solid rgba(77,143,255,.2);padding:5px 12px;border-radius:99px;margin-bottom:16px}
+.chip-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s ease infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+h1{font-size:clamp(26px,4vw,46px);font-weight:800;letter-spacing:-1.5px;line-height:1.05}
+h1 em{font-style:normal;color:var(--opt)}
+.tagline{margin-top:10px;font-size:14px;color:var(--muted);font-weight:400;max-width:480px;line-height:1.6}
+.header-stat{text-align:right}
+.big-num{font-family:'JetBrains Mono',monospace;font-size:48px;font-weight:700;color:var(--saved);line-height:1;opacity:0;transition:opacity .4s}
+.big-num.show{opacity:1}
+.big-label{font-size:11px;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace;letter-spacing:1px}
+
+/* ── PROMPT SECTION ── */
+.prompt-section{margin-bottom:40px}
+.section-label{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.prompt-box{background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);overflow:hidden;transition:border-color .2s,box-shadow .2s}
+.prompt-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.prompt-top{display:flex;align-items:center;gap:0}
+textarea{
+  flex:1;background:transparent;border:none;outline:none;
+  color:var(--text);font-family:'Syne',sans-serif;font-size:15px;
+  padding:18px 20px;resize:none;height:72px;line-height:1.5;
+}
+textarea::placeholder{color:var(--muted)}
+.run-btn{
+  margin:10px;flex-shrink:0;
+  background:var(--accent);color:#fff;border:none;border-radius:10px;
+  font-family:'Syne',sans-serif;font-weight:700;font-size:14px;
+  padding:12px 22px;cursor:pointer;
+  display:flex;align-items:center;gap:8px;
+  transition:background .15s,transform .1s,opacity .15s;
+  white-space:nowrap;
+}
+.run-btn:hover{background:#5e99ff}
+.run-btn:active{transform:scale(.97)}
+.run-btn:disabled{opacity:.45;cursor:not-allowed}
+.run-btn svg{flex-shrink:0}
+
+.suggestions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.sug{
+  font-size:12px;color:var(--muted);background:var(--card2);
+  border:1px solid var(--border);border-radius:99px;
+  padding:5px 14px;cursor:pointer;transition:color .15s,border-color .15s;
+  font-family:'JetBrains Mono',monospace;
+}
+.sug:hover{color:var(--accent);border-color:var(--accent)}
+
+/* ── TOOLS PANEL ── */
+.tools-panel{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:40px}
+.tool-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:12px;padding:14px 16px;
+  display:flex;align-items:center;gap:12px;
+  transition:border-color .3s,box-shadow .3s;
+  position:relative;overflow:hidden;
+}
+.tool-card::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,transparent 60%,rgba(255,255,255,.02));
+  pointer-events:none;
+}
+.tool-icon{width:34px;height:34px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;}
+.tool-icon.bad{background:var(--bad-dim)}
+.tool-icon.opt{background:var(--opt-dim)}
+.tool-name{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text);line-height:1.3}
+.tool-desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4}
+.tool-status{margin-left:auto;flex-shrink:0;width:8px;height:8px;border-radius:50%;background:var(--muted2);transition:background .3s,box-shadow .3s;}
+.tool-card.idle .tool-status{background:var(--muted2)}
+.tool-card.running .tool-status{background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink .7s ease infinite}
+.tool-card.done-bad .tool-status{background:var(--bad);box-shadow:0 0 6px var(--bad)}
+.tool-card.done-opt .tool-status{background:var(--opt);box-shadow:0 0 6px var(--opt)}
+.tool-card.running{border-color:var(--accent)}
+.tool-card.done-bad{border-color:rgba(255,64,96,.3)}
+.tool-card.done-opt{border-color:rgba(0,223,162,.3)}
+.tool-time{font-family:'JetBrains Mono',monospace;font-size:10px;margin-top:4px;height:13px}
+.tool-card.done-bad .tool-time{color:var(--bad)}
+.tool-card.done-opt .tool-time{color:var(--opt)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── LIVE LOG ── */
+.log-wrap{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:40px}
+.log-header{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.log-title{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
+.log-dot{width:7px;height:7px;border-radius:50%;background:var(--muted2)}
+.log-dot.active{background:var(--opt);box-shadow:0 0 6px var(--opt);animation:blink .6s ease infinite}
+.log-body{padding:14px 18px;min-height:80px;max-height:220px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8}
+.log-line{display:flex;gap:10px;opacity:0;animation:fadeIn .25s ease forwards}
+@keyframes fadeIn{to{opacity:1}}
+.log-time{color:var(--muted);flex-shrink:0}
+.log-line.info .log-msg{color:var(--text)}
+.log-line.tool-s .log-msg{color:var(--accent)}
+.log-line.tool-d .log-msg{color:var(--opt)}
+.log-line.err .log-msg{color:var(--bad)}
+.log-line.sum .log-msg{color:var(--saved)}
+
+/* ── STATS ROW ── */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:40px}
+.stat{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:20px 22px;
+  position:relative;overflow:hidden;
+  opacity:0;transform:translateY(14px);
+  transition:opacity .4s,transform .4s;
+}
+.stat.show{opacity:1;transform:translateY(0)}
+.stat::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px}
+.stat.bad::after{background:var(--bad)}
+.stat.opt::after{background:var(--opt)}
+.stat.save::after{background:var(--saved)}
+.stat.speed::after{background:var(--accent)}
+.stat-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.stat-val{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;line-height:1}
+.stat.bad .stat-val{color:var(--bad)}
+.stat.opt .stat-val{color:var(--opt)}
+.stat.save .stat-val{color:var(--saved)}
+.stat.speed .stat-val{color:var(--accent)}
+
+/* ── TABLE ── */
+.table-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:40px;opacity:0;transform:translateY(14px);transition:opacity .5s .1s,transform .5s .1s}
+.table-card.show{opacity:1;transform:translateY(0)}
+table{width:100%;border-collapse:collapse}
+thead tr{background:rgba(255,255,255,.025)}
+th{padding:13px 20px;text-align:left;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)}
+th:not(:first-child){text-align:right}
+td{padding:15px 20px;font-family:'JetBrains Mono',monospace;font-size:13px;border-bottom:1px solid var(--border)}
+td:not(:first-child){text-align:right}
+tr:last-child td{border-bottom:none}
+.td-op{font-family:'Syne',sans-serif;font-weight:600;font-size:13px}
+.td-bad{color:var(--bad)}
+.td-opt{color:var(--opt)}
+.td-save{color:var(--saved);font-weight:700}
+.total-row{background:rgba(255,255,255,.03)}
+.total-row td{font-weight:700}
+
+.bar-cell{min-width:180px}
+.bar-row{display:flex;align-items:center;justify-content:flex-end;gap:10px}
+.bar-track{width:70px;height:5px;background:var(--border2);border-radius:99px;overflow:hidden;flex-shrink:0}
+.bar-fill{height:100%;border-radius:99px;width:0;transition:width 1s cubic-bezier(.4,0,.2,1)}
+.bar-bad .bar-fill{background:var(--bad)}
+.bar-opt .bar-fill{background:var(--opt)}
+
+/* ── EMP CARDS ── */
+.emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:40px;opacity:0;transform:translateY(14px);transition:opacity .5s .2s,transform .5s .2s}
+.emp-grid.show{opacity:1;transform:translateY(0)}
+.emp-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.emp-top{padding:16px 18px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.emp-av{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--opt));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#070b14;flex-shrink:0}
+.emp-name{font-weight:700;font-size:14px}
+.emp-dept{font-size:11px;color:var(--muted);margin-top:2px}
+.emp-body{padding:14px 18px;display:flex;flex-direction:column;gap:8px}
+.emp-row{display:flex;justify-content:space-between;align-items:center}
+.emp-key{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.emp-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700}
+.emp-val.bad{color:var(--bad)}
+.emp-val.opt{color:var(--opt)}
+.emp-val.saved{color:var(--saved)}
+.emp-divider{height:1px;background:var(--border);margin:4px 0}
+
+/* ── SUMMARY ── */
+.summary-box{background:var(--saved-dim);border:1px solid rgba(245,196,0,.2);border-radius:var(--radius);padding:20px 24px;margin-bottom:40px;opacity:0;transform:translateY(14px);transition:opacity .4s .3s,transform .4s .3s}
+.summary-box.show{opacity:1;transform:translateY(0)}
+.summary-label{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--saved);margin-bottom:10px}
+.summary-text{font-size:14px;line-height:1.7;color:var(--text)}
+
+/* cursor blink while streaming */
+.summary-text.streaming::after{content:'▋';animation:blink .7s ease infinite;color:var(--saved);margin-left:2px}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:80px 20px;color:var(--muted)}
+.empty-icon{font-size:52px;margin-bottom:16px}
+.empty p{font-size:14px;line-height:1.8}
+.empty code{font-family:'JetBrains Mono',monospace;color:var(--accent);background:var(--accent-dim);padding:2px 7px;border-radius:4px;font-size:12px}
+
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-left">
+      <div class="chip"><span class="chip-dot"></span>MCP · OpenAI · SQLAlchemy</div>
+      <h1>DB Connection<br/><em>Optimization</em> Demo</h1>
+      <p class="tagline">Type a prompt — watch the AI trigger tools live and compare bad vs optimized DB session performance.</p>
+    </div>
+    <div class="header-stat">
+      <div class="big-num" id="speedup-num">—</div>
+      <div class="big-label">SPEEDUP</div>
+    </div>
+  </header>
+
+  <!-- PROMPT -->
+  <div class="prompt-section">
+    <div class="section-label">Your Prompt</div>
+    <div class="prompt-box">
+      <div class="prompt-top">
+        <textarea id="prompt-input" placeholder="e.g. get total employees and details for employee id 1 and id 2"></textarea>
+        <button class="run-btn" id="run-btn" onclick="runDemo()">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="white"/></svg>
+          Run
+        </button>
+      </div>
+    </div>
+    <div class="suggestions">
+      <span class="sug" onclick="useSug(this)">total employees + id 1</span>
+      <span class="sug" onclick="useSug(this)">total employees + id 1 and id 2</span>
+      <span class="sug" onclick="useSug(this)">get details for id 1, 2 and 3</span>
+      <span class="sug" onclick="useSug(this)">total employees only</span>
+    </div>
+  </div>
+
+  <!-- TOOLS -->
+  <div class="section-label" id="tools-label" style="display:none">Available Tools <span id="tool-count" style="color:var(--accent);font-size:11px"></span></div>
+  <div class="tools-panel" id="tools-panel"></div>
+
+  <!-- LIVE LOG -->
+  <div id="log-section" style="display:none">
+    <div class="section-label">Live Activity</div>
+    <div class="log-wrap">
+      <div class="log-header">
+        <div class="log-title"><span class="log-dot" id="log-dot"></span>Event Stream</div>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted)" id="log-count">0 events</span>
+      </div>
+      <div class="log-body" id="log-body"></div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="results-section" style="display:none">
+
+    <div class="section-label">Performance Summary</div>
+    <div class="stats-row" id="stats-row">
+      <div class="stat bad" id="s-bad"><div class="stat-lbl">Total Bad Time</div><div class="stat-val" id="sv-bad">—</div></div>
+      <div class="stat opt" id="s-opt"><div class="stat-lbl">Total Optimized</div><div class="stat-val" id="sv-opt">—</div></div>
+      <div class="stat save" id="s-save"><div class="stat-lbl">Time Saved</div><div class="stat-val" id="sv-save">—</div></div>
+      <div class="stat speed" id="s-speed"><div class="stat-lbl">Speedup</div><div class="stat-val" id="sv-speed">—</div></div>
+    </div>
+
+    <div class="section-label">Comparison Table</div>
+    <div class="table-card" id="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Operation</th>
+            <th>❌ Bad Version</th>
+            <th>✅ Optimized</th>
+            <th>Saved</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+
+    <div id="emp-section" style="display:none">
+      <div class="section-label">Employee Details</div>
+      <div class="emp-grid" id="emp-grid"></div>
+    </div>
+
+    <div id="summary-section" style="display:none">
+      <div class="section-label">AI Summary</div>
+      <div class="summary-box" id="summary-box">
+        <div class="summary-label">🤖 GPT-4o says</div>
+        <div class="summary-text" id="summary-text"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- EMPTY STATE -->
+  <div class="empty" id="empty-state">
+    <div class="empty-icon">⚡</div>
+    <p>Type a prompt above and click <strong>Run</strong>.<br/>
+    The AI will automatically trigger the right tools<br/>and show you a live performance comparison.</p>
+  </div>
+
+</div>
+
+<script>
+const API = 'http://localhost:5000';
+let logCount = 0;
+let toolStates = {};
+
+function ms(v){ return `${parseFloat(v).toFixed(2)} ms`; }
+
+function initials(name){
+  return name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+}
+
+function useSug(el){
+  document.getElementById('prompt-input').value = el.textContent;
+  document.getElementById('prompt-input').focus();
+}
+
+function addLog(type, msg){
+  const body = document.getElementById('log-body');
+  const now  = new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const line = document.createElement('div');
+  line.className = `log-line ${type}`;
+  line.innerHTML = `<span class="log-time">${now}</span><span class="log-msg">${msg}</span>`;
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+  logCount++;
+  document.getElementById('log-count').textContent = `${logCount} events`;
+}
+
+function renderTools(tools){
+  const panel = document.getElementById('tools-panel');
+  panel.innerHTML = '';
+  toolStates = {};
+  tools.forEach(t => {
+    const isBad = t.name.startsWith('bad_');
+    const card  = document.createElement('div');
+    card.className = 'tool-card idle';
+    card.id = `tc-${t.name}`;
+    card.innerHTML = `
+      <div class="tool-icon ${isBad?'bad':'opt'}">${isBad?'❌':'✅'}</div>
+      <div style="flex:1;min-width:0">
+        <div class="tool-name">${t.name}</div>
+        <div class="tool-desc">${t.description||''}</div>
+        <div class="tool-time" id="tt-${t.name}"></div>
+      </div>
+      <div class="tool-status"></div>`;
+    panel.appendChild(card);
+    toolStates[t.name] = card;
+  });
+  document.getElementById('tool-count').textContent = `(${tools.length} tools)`;
+  document.getElementById('tools-label').style.display = 'flex';
+}
+
+function setToolRunning(name){
+  const card = document.getElementById(`tc-${name}`);
+  if(card){ card.className = 'tool-card running'; }
+}
+
+function setToolDone(name, result){
+  const card = document.getElementById(`tc-${name}`);
+  const isBad = name.startsWith('bad_');
+  if(card){
+    card.className = `tool-card ${isBad?'done-bad':'done-opt'}`;
+    const tt = document.getElementById(`tt-${name}`);
+    if(tt && result.execution_time_ms){
+      tt.textContent = result.execution_time_ms;
+    }
+  }
+}
+
+function renderResults(table, collected){
+  document.getElementById('sv-bad').textContent   = ms(table.total_bad);
+  document.getElementById('sv-opt').textContent   = ms(table.total_opt);
+  document.getElementById('sv-save').textContent  = ms(table.total_saved);
+  document.getElementById('sv-speed').textContent = `${table.speedup}×`;
+
+  const sn = document.getElementById('speedup-num');
+  sn.textContent = `${table.speedup}×`;
+  sn.classList.add('show');
+
+  document.getElementById('results-section').style.display = 'block';
+  document.getElementById('empty-state').style.display = 'none';
+
+  ['s-bad','s-opt','s-save','s-speed'].forEach((id,i)=>{
+    setTimeout(()=>document.getElementById(id).classList.add('show'),i*80);
+  });
+
+  const maxBad = Math.max(...table.rows.map(r=>r.bad_ms));
+  const tbody  = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  table.rows.forEach(r=>{
+    const badPct = ((r.bad_ms/maxBad)*100).toFixed(1);
+    const optPct = ((r.opt_ms/maxBad)*100).toFixed(1);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="td-op">${r.operation}</td>
+      <td class="bar-cell">
+        <div class="bar-row bar-bad">
+          <span class="td-bad">${ms(r.bad_ms)}</span>
+          <div class="bar-track"><div class="bar-fill" data-w="${badPct}"></div></div>
+        </div>
+      </td>
+      <td class="bar-cell">
+        <div class="bar-row bar-opt">
+          <span class="td-opt">${ms(r.opt_ms)}</span>
+          <div class="bar-track"><div class="bar-fill" data-w="${optPct}"></div></div>
+        </div>
+      </td>
+      <td class="td-save">${ms(r.saved_ms)}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const totalTr = document.createElement('tr');
+  totalTr.className = 'total-row';
+  totalTr.innerHTML = `
+    <td class="td-op">TOTAL</td>
+    <td class="td-bad">${ms(table.total_bad)}</td>
+    <td class="td-opt">${ms(table.total_opt)}</td>
+    <td class="td-save">${ms(table.total_saved)}</td>`;
+  tbody.appendChild(totalTr);
+
+  document.getElementById('table-card').classList.add('show');
+  setTimeout(()=>{
+    document.querySelectorAll('.bar-fill').forEach(el=>{
+      el.style.width = (el.dataset.w||'0')+'%';
+    });
+  }, 200);
+
+  // employee cards
+  const empIds = Object.keys(collected)
+    .filter(k=>k.startsWith('bad_get_employee_'))
+    .map(k=>parseInt(k.split('_').pop()))
+    .sort((a,b)=>a-b);
+
+  if(empIds.length){
+    const grid = document.getElementById('emp-grid');
+    grid.innerHTML = '';
+    empIds.forEach(id=>{
+      const bad = collected[`bad_get_employee_${id}`];
+      const opt = collected[`optimized_get_employee_${id}`];
+      if(!bad||!opt||!bad.employee) return;
+      const emp    = bad.employee;
+      const badMs  = parseFloat(bad.execution_time_ms);
+      const optMs  = parseFloat(opt.execution_time_ms);
+      const saved  = badMs - optMs;
+      const card   = document.createElement('div');
+      card.className = 'emp-card';
+      card.innerHTML = `
+        <div class="emp-top">
+          <div class="emp-av">${initials(emp.name)}</div>
+          <div>
+            <div class="emp-name">${emp.name}</div>
+            <div class="emp-dept">${emp.department} · ID #${emp.id}</div>
+          </div>
+        </div>
+        <div class="emp-body">
+          <div class="emp-row"><span class="emp-key">❌ Bad</span><span class="emp-val bad">${ms(badMs)}</span></div>
+          <div class="emp-row"><span class="emp-key">✅ Optimized</span><span class="emp-val opt">${ms(optMs)}</span></div>
+          <div class="emp-divider"></div>
+          <div class="emp-row"><span class="emp-key">💾 Saved</span><span class="emp-val saved">${ms(saved)}</span></div>
+        </div>`;
+      grid.appendChild(card);
+    });
+    document.getElementById('emp-section').style.display = 'block';
+    setTimeout(()=>document.getElementById('emp-grid').classList.add('show'),100);
+  }
+}
+
+function resetUI(){
+  logCount = 0;
+  document.getElementById('log-count').textContent = '0 events';
+  document.getElementById('log-body').innerHTML = '';
+  document.getElementById('log-dot').className = 'log-dot active';
+  document.getElementById('log-section').style.display = 'block';
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('summary-section').style.display = 'none';
+  document.getElementById('emp-section').style.display = 'none';
+  document.getElementById('speedup-num').classList.remove('show');
+  document.getElementById('summary-text').textContent = '';
+  document.getElementById('summary-box').classList.remove('show');
+  ['s-bad','s-opt','s-save','s-speed'].forEach(id=>document.getElementById(id).classList.remove('show'));
+  document.getElementById('table-card').classList.remove('show');
+  Object.keys(toolStates).forEach(n=>{
+    const c = document.getElementById(`tc-${n}`);
+    if(c){ c.className='tool-card idle'; }
+    const tt = document.getElementById(`tt-${n}`);
+    if(tt){ tt.textContent=''; }
+  });
+}
+
+async function runDemo(){
+  const prompt = document.getElementById('prompt-input').value.trim();
+  if(!prompt){ alert('Please enter a prompt first.'); return; }
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="white" stroke-width="1.5" stroke-dasharray="20" stroke-dashoffset="20"><animateTransform attributeName="transform" type="rotate" from="0 7 7" to="360 7 7" dur="0.8s" repeatCount="indefinite"/></circle></svg> Running...`;
+
+  resetUI();
+
+  const url = `${API}/run?prompt=${encodeURIComponent(prompt)}`;
+  const es  = new EventSource(url);
+
+  // ── existing events ──────────────────────────────────────────────────────
+
+  es.addEventListener('tools', e=>{
+    const d = JSON.parse(e.data);
+    renderTools(d.tools);
+    addLog('info', `🔌 ${d.tools.length} tools registered from MCP server`);
+  });
+
+  es.addEventListener('ids_detected', e=>{
+    const d = JSON.parse(e.data);
+    if(d.ids.length) addLog('info', `🔍 Employee IDs detected: ${d.ids.join(', ')}`);
+  });
+
+  es.addEventListener('tool_start', e=>{
+    const d = JSON.parse(e.data);
+    const args = Object.keys(d.args).length ? JSON.stringify(d.args) : '{}';
+    setToolRunning(d.name);
+    addLog('tool-s', `🔧 Calling → <strong>${d.name}</strong>  ${args}`);
+  });
+
+  es.addEventListener('tool_done', e=>{
+    const d = JSON.parse(e.data);
+    setToolDone(d.name, d.result);
+    const t = d.result.execution_time_ms || '';
+    addLog('tool-d', `✅ Done   ← <strong>${d.name}</strong>  ${t}`);
+  });
+
+  // ── NEW: partial table update after each bad/opt pair ────────────────────
+  es.addEventListener('partial_results', e=>{
+    const d = JSON.parse(e.data);
+    renderResults(d.table, d.collected);
+  });
+
+  // final authoritative results (all tools done)
+  es.addEventListener('results', e=>{
+    const d = JSON.parse(e.data);
+    addLog('info', `📊 Final comparison table ready`);
+    renderResults(d.table, d.collected);
+  });
+
+  // ── NEW: streaming summary word by word ──────────────────────────────────
+  let summaryBuffer = '';
+  es.addEventListener('summary_chunk', e=>{
+    const d = JSON.parse(e.data);
+    summaryBuffer += d.chunk;
+    const el = document.getElementById('summary-text');
+    el.textContent = summaryBuffer;
+    el.classList.add('streaming');               // shows blinking cursor
+    document.getElementById('summary-section').style.display = 'block';
+    document.getElementById('summary-box').classList.add('show');
+  });
+
+  es.addEventListener('summary_done', ()=>{
+    document.getElementById('summary-text').classList.remove('streaming');
+    addLog('sum', `🤖 AI: ${summaryBuffer.slice(0,80)}...`);
+    summaryBuffer = '';
+  });
+
+  // ── done / error ─────────────────────────────────────────────────────────
+
+  es.addEventListener('error', e=>{
+    const d = JSON.parse(e.data);
+    addLog('err', `❌ Error: ${d.message}`);
+    document.getElementById('log-dot').className = 'log-dot';
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="white"/></svg> Run`;
+    es.close();
+  });
+
+  es.addEventListener('done', ()=>{
+    document.getElementById('log-dot').className = 'log-dot';
+    addLog('info', '🏁 Demo complete');
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="white"/></svg> Run`;
+    es.close();
+  });
+
+  es.onerror = ()=>{
+    if(es.readyState === EventSource.CLOSED) return;
+    addLog('err','❌ Connection lost — is api_server.py running on port 5000?');
+    document.getElementById('log-dot').className='log-dot';
+    btn.disabled=false;
+    btn.innerHTML=`<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="white"/></svg> Run`;
+    es.close();
+  };
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('prompt-input').addEventListener('keydown', e=>{
+    if(e.key==='Enter' && (e.ctrlKey||e.metaKey)) runDemo();
+  });
+});
+</script>
+</body>
+</html>
